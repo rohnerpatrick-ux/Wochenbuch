@@ -13,6 +13,7 @@ function emptyConfig(){
       A: Object.fromEntries(WEEKDAY_KEYS.map(d=>[d, Array.from({length:8},()=>({subject:'',klasse:''}))])),
       B: Object.fromEntries(WEEKDAY_KEYS.map(d=>[d, Array.from({length:8},()=>({subject:'',klasse:''}))]))
     },
+    syncedPeriods: Array.from({length:8}, ()=>false),
     referenceDate: null,
     referenceWeekType: 'A'
   };
@@ -21,15 +22,17 @@ function emptyConfig(){
 function loadData(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
-    if(!raw) return {config: emptyConfig(), overrides:{}, entries:{}};
+    if(!raw) return {config: emptyConfig(), overrides:{}, weekOverrides:{}, entries:{}};
     const parsed = JSON.parse(raw);
     parsed.config = parsed.config || emptyConfig();
+    if(!parsed.config.syncedPeriods) parsed.config.syncedPeriods = Array.from({length:parsed.config.periodsCount}, ()=>false);
     parsed.overrides = parsed.overrides || {};
+    parsed.weekOverrides = parsed.weekOverrides || {};
     parsed.entries = parsed.entries || {};
     return parsed;
   }catch(e){
     console.error('Ladefehler', e);
-    return {config: emptyConfig(), overrides:{}, entries:{}};
+    return {config: emptyConfig(), overrides:{}, weekOverrides:{}, entries:{}};
   }
 }
 
@@ -68,9 +71,11 @@ function formatLong(dateStr){
 
 /* ---------- AB-Wochenlogik ---------- */
 function getWeekType(dateStr){
-  const override = DATA.overrides[dateStr];
-  if(override && override.type === 'holiday') return null;
-  if(override && override.type === 'weekType') return override.value;
+  const dayOverride = DATA.overrides[dateStr];
+  if(dayOverride && dayOverride.type === 'holiday') return null;
+
+  const mondayStr = toDateStr(getMonday(dateStr));
+  if(DATA.weekOverrides[mondayStr]) return DATA.weekOverrides[mondayStr];
 
   if(!DATA.config.referenceDate) return null;
   const refMonday = getMonday(DATA.config.referenceDate);
@@ -422,8 +427,11 @@ function renderWeek(){
 
   html += `<div class="btn-row">
     <button class="btn secondary small" id="exportCsv">Als CSV exportieren (ganzes Schuljahr)</button>
-    <button class="btn ghost small" id="exportJson">Datensicherung (JSON)</button>
-  </div>`;
+    <button class="btn ghost small" id="exportJson">Sicherung speichern (JSON)</button>
+    <button class="btn ghost small" id="importJsonBtn">Sicherung laden (JSON)</button>
+    <input type="file" id="importFile" accept="application/json" style="display:none;">
+  </div>
+  <p class="muted" style="margin-top:8px;">Tipp: Stundenplan bequem am Laptop unter „Einrichten“ eintippen, hier als JSON sichern, Datei aufs Handy schicken (z.&nbsp;B. per Mail) und dort über „Sicherung laden“ einlesen.</p>`;
 
   app.innerHTML = html;
   const mondayDate = fromDateStr(currentWeekMonday);
@@ -436,6 +444,12 @@ function renderWeek(){
   document.getElementById('nextWeek').onclick = ()=>{ currentWeekMonday = addDays(currentWeekMonday,7); renderWeek(); };
   document.getElementById('exportCsv').onclick = exportCsv;
   document.getElementById('exportJson').onclick = exportJson;
+  document.getElementById('importJsonBtn').onclick = ()=> document.getElementById('importFile').click();
+  document.getElementById('importFile').onchange = (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    importJson(file);
+  };
 }
 
 /* ---------- Export ---------- */
@@ -460,6 +474,28 @@ function exportCsv(){
 function exportJson(){
   downloadFile('wochenbuch_backup.json', JSON.stringify(DATA, null, 2), 'application/json');
   showToast('Sicherung erstellt');
+}
+function importJson(file){
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    try{
+      const parsed = JSON.parse(e.target.result);
+      if(!parsed.config){ showToast('Ungültige Datei'); return; }
+      const proceed = confirm('Bestehende Daten auf diesem Gerät werden durch die Sicherung ersetzt. Fortfahren?');
+      if(!proceed) return;
+      parsed.overrides = parsed.overrides || {};
+      parsed.weekOverrides = parsed.weekOverrides || {};
+      parsed.entries = parsed.entries || {};
+      if(!parsed.config.syncedPeriods) parsed.config.syncedPeriods = Array.from({length:parsed.config.periodsCount}, ()=>false);
+      DATA = parsed;
+      saveData();
+      showToast('Sicherung geladen');
+      render();
+    }catch(err){
+      showToast('Datei konnte nicht gelesen werden');
+    }
+  };
+  reader.readAsText(file);
 }
 function downloadFile(filename, content, mime){
   const blob = new Blob([content], {type: mime});
@@ -514,25 +550,35 @@ function renderSetup(){
   </div>
 
   <div class="card">
-    <h3 style="margin-bottom:6px;">Ausnahmen &amp; Ferien</h3>
-    <p class="muted" style="margin-bottom:12px;">Für Feiertage/Ferien (kein Unterricht) oder wenn sich der A/B-Rhythmus verschiebt.</p>
+    <h3 style="margin-bottom:6px;">Wochentyp-Kalender</h3>
+    <p class="muted" style="margin-bottom:12px;">Falls sich der A/B-Rhythmus mal verschiebt (z.&nbsp;B. wegen Ferien): hier für eine ganze Kalenderwoche A oder B festlegen. Gilt dann für Mo–Fr dieser Woche.</p>
     <div class="field-row" style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
       <div class="field" style="flex:1; min-width:140px; margin-bottom:0;">
-        <label>Datum</label>
-        <input type="date" id="ovDate">
+        <label>Ein beliebiger Tag in dieser Woche</label>
+        <input type="date" id="weekOvDate">
       </div>
-      <div class="field" style="flex:1; min-width:160px; margin-bottom:0;">
-        <label>Art</label>
-        <select id="ovType">
-          <option value="holiday">Schulfrei (Ferien/Feiertag)</option>
-          <option value="weekType">Wochentyp erzwingen</option>
-        </select>
-      </div>
-      <div class="field" id="ovValueWrap" style="display:none; margin-bottom:0;">
+      <div class="field" style="min-width:110px; margin-bottom:0;">
         <label>Wochentyp</label>
-        <select id="ovValue"><option value="A">A</option><option value="B">B</option></select>
+        <select id="weekOvValue"><option value="A">A-Woche</option><option value="B">B-Woche</option></select>
       </div>
-      <button class="btn small" id="addOverride">Hinzufügen</button>
+      <button class="btn small" id="addWeekOverride">Festlegen</button>
+    </div>
+    <div id="weekOverrideList" style="margin-top:14px;"></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:6px;">Schulfreie Tage &amp; Ferien</h3>
+    <p class="muted" style="margin-bottom:12px;">Einzelner Feiertag oder ganzer Ferienzeitraum – an diesen Tagen wird nichts abgefragt.</p>
+    <div class="field-row" style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+      <div class="field" style="flex:1; min-width:120px; margin-bottom:0;">
+        <label>Von</label>
+        <input type="date" id="holFrom">
+      </div>
+      <div class="field" style="flex:1; min-width:120px; margin-bottom:0;">
+        <label>Bis (optional, für Ferien)</label>
+        <input type="date" id="holTo">
+      </div>
+      <button class="btn small" id="addHoliday">Als schulfrei markieren</button>
     </div>
     <div id="overrideList" style="margin-top:14px;"></div>
     <p class="field-hint">Einzelne Tage mit individuellem Plan (z.&nbsp;B. Fenstertag) kannst du direkt in der „Heute“-Ansicht über „Diesen Tag anpassen“ eintragen.</p>
@@ -541,14 +587,18 @@ function renderSetup(){
   app.innerHTML = html;
   bindSetupEvents();
   renderOverrideList();
+  renderWeekOverrideList();
 }
 
 function renderScheduleRows(weekType){
   const cfg = DATA.config;
   let rows = '';
   for(let i=0;i<cfg.periodsCount;i++){
-    rows += `<tr>`;
-    rows += `<td>${i+1}</td>`;
+    const synced = !!cfg.syncedPeriods[i];
+    rows += `<tr class="${synced?'synced-row':''}">`;
+    rows += `<td>${i+1}<br><label style="font-weight:400;display:flex;align-items:center;gap:3px;white-space:nowrap;">
+      <input type="checkbox" class="sync-toggle" data-idx="${i}" ${synced?'checked':''}> <span style="font-size:.68rem;">A=B</span>
+    </label></td>`;
     WEEKDAY_KEYS.forEach(dk=>{
       const arr = cfg.weeks[weekType][dk] || [];
       const p = arr[i] || {subject:'',klasse:''};
@@ -579,6 +629,9 @@ function bindSetupEvents(){
 
   document.getElementById('saveSchedule').onclick = ()=>{
     const cfg = DATA.config;
+    document.querySelectorAll('.sync-toggle').forEach(cb=>{
+      cfg.syncedPeriods[parseInt(cb.dataset.idx,10)] = cb.checked;
+    });
     document.querySelectorAll('.sched-subject').forEach(inp=>{
       const day = inp.dataset.day, idx = parseInt(inp.dataset.idx,10);
       cfg.weeks[setupWeekType][day][idx].subject = inp.value.trim();
@@ -587,27 +640,68 @@ function bindSetupEvents(){
       const day = inp.dataset.day, idx = parseInt(inp.dataset.idx,10);
       cfg.weeks[setupWeekType][day][idx].klasse = inp.value.trim();
     });
+    // Synchronisierte Stunden in die jeweils andere Woche spiegeln
+    const otherType = setupWeekType === 'A' ? 'B' : 'A';
+    cfg.syncedPeriods.forEach((isSynced, idx)=>{
+      if(!isSynced) return;
+      WEEKDAY_KEYS.forEach(dk=>{
+        cfg.weeks[otherType][dk][idx] = {...cfg.weeks[setupWeekType][dk][idx]};
+      });
+    });
     saveData();
     showToast('Stundenplan gespeichert');
+    renderSetup();
   };
 
-  document.getElementById('ovType').onchange = (e)=>{
-    document.getElementById('ovValueWrap').style.display = e.target.value === 'weekType' ? 'block' : 'none';
-  };
-
-  document.getElementById('addOverride').onclick = ()=>{
-    const date = document.getElementById('ovDate').value;
+  document.getElementById('addWeekOverride').onclick = ()=>{
+    const date = document.getElementById('weekOvDate').value;
     if(!date){ showToast('Bitte Datum wählen'); return; }
-    const type = document.getElementById('ovType').value;
-    if(type === 'holiday'){
-      DATA.overrides[date] = {type:'holiday'};
-    } else {
-      DATA.overrides[date] = {type:'weekType', value: document.getElementById('ovValue').value};
+    const mondayStr = toDateStr(getMonday(date));
+    DATA.weekOverrides[mondayStr] = document.getElementById('weekOvValue').value;
+    saveData();
+    renderWeekOverrideList();
+    showToast('Wochentyp festgelegt');
+  };
+
+  document.getElementById('addHoliday').onclick = ()=>{
+    const from = document.getElementById('holFrom').value;
+    const to = document.getElementById('holTo').value || from;
+    if(!from){ showToast('Bitte Datum wählen'); return; }
+    let d = from;
+    let guard = 0;
+    while(d <= to && guard < 200){
+      const dow = fromDateStr(d).getDay();
+      if(dow !== 0 && dow !== 6) DATA.overrides[d] = {type:'holiday'};
+      d = addDays(d,1);
+      guard++;
     }
     saveData();
     renderOverrideList();
-    showToast('Ausnahme hinzugefügt');
+    showToast('Als schulfrei markiert');
   };
+}
+
+function renderWeekOverrideList(){
+  const wrap = document.getElementById('weekOverrideList');
+  const entries = Object.entries(DATA.weekOverrides).sort(([a],[b])=>a.localeCompare(b));
+  if(entries.length === 0){
+    wrap.innerHTML = `<p class="muted">Noch keine Wochen manuell festgelegt – es gilt der automatische Rhythmus ab dem Referenzdatum.</p>`;
+    return;
+  }
+  wrap.innerHTML = entries.map(([monday, type])=>{
+    const sunday = addDays(monday,4);
+    return `<div class="override-item">
+      <span>${fromDateStr(monday).toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit'})} – ${fromDateStr(sunday).toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit',year:'numeric'})} <span class="override-tag">${type}-Woche</span></span>
+      <button class="btn ghost small" data-delw="${monday}">Entfernen</button>
+    </div>`;
+  }).join('');
+  wrap.querySelectorAll('[data-delw]').forEach(btn=>{
+    btn.onclick = ()=>{
+      delete DATA.weekOverrides[btn.dataset.delw];
+      saveData();
+      renderWeekOverrideList();
+    };
+  });
 }
 
 function resizePeriods(newCount){
@@ -619,6 +713,8 @@ function resizePeriods(newCount){
       arr.length = newCount;
     });
   });
+  while(cfg.syncedPeriods.length < newCount) cfg.syncedPeriods.push(false);
+  cfg.syncedPeriods.length = newCount;
   cfg.periodsCount = newCount;
 }
 
@@ -630,7 +726,7 @@ function renderOverrideList(){
     return;
   }
   wrap.innerHTML = entries.map(([date, ov])=>{
-    let label = ov.type === 'holiday' ? 'Schulfrei' : (ov.type === 'weekType' ? `Erzwungen: ${ov.value}-Woche` : 'Individueller Tag');
+    let label = ov.type === 'holiday' ? 'Schulfrei' : 'Individueller Tag';
     return `<div class="override-item">
       <span>${fromDateStr(date).toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit',year:'numeric'})} <span class="override-tag">${label}</span></span>
       <button class="btn ghost small" data-del="${date}">Entfernen</button>

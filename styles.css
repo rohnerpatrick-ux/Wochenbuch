@@ -300,6 +300,8 @@ textarea:focus, input:focus, select:focus{
   font-family:'IBM Plex Sans';
 }
 .grid-table input:focus{ background:#fff; border-color: var(--paper-line); }
+.synced-row{ background: var(--amber-soft); }
+.synced-row td:first-child{ color: var(--amber); font-weight:600; }
 
 .week-toggle{
   display:flex; gap:0; margin-bottom:14px;
