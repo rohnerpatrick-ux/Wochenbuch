@@ -2,35 +2,188 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Wochenbuch</title>
-<meta name="theme-color" content="#2C4A3E">
-<link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon-192.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wochenbuch-Tools</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css">
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #16283D;
+    --bg-2: #1E3550;
+    --card: #F7F3E8;
+    --card-line: #D8CDB0;
+    --ink: #1F3A5A;
+    --charcoal: #2B2B2B;
+    --accent-red: #B23A3A;
+    --kraft: #C79A4B;
+    --kraft-dark: #A87B32;
+    --muted: #7A7563;
+    --green: #4C7A5A;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    min-height:100vh;
+    background:
+      radial-gradient(circle at 20% 10%, rgba(255,255,255,0.03), transparent 40%),
+      linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+    font-family:'Lora', serif;
+    color: var(--charcoal);
+    padding: 32px 16px 64px;
+  }
+  .wrap{
+    max-width: 920px;
+    margin: 0 auto;
+  }
+  .masthead{
+    padding: 0 6px;
+    margin-bottom: 28px;
+  }
+  .masthead h1{
+    font-family:'Special Elite', monospace;
+    color:#F2EFE6;
+    font-size: 1.7rem;
+    letter-spacing: 0.04em;
+    margin:0 0 6px;
+    text-transform: uppercase;
+  }
+  .masthead .sub{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 0.75rem;
+    color:#93A6BF;
+    letter-spacing: 0.04em;
+  }
+
+  .shelf{
+    display:grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+  }
+
+  .folder{
+    position:relative;
+    background: var(--card);
+    border: 1px solid var(--card-line);
+    border-radius: 2px 10px 10px 10px;
+    padding: 20px 20px 18px;
+    min-height: 150px;
+    display:flex;
+    flex-direction:column;
+    text-decoration:none;
+    color: inherit;
+    box-shadow: 0 12px 26px rgba(0,0,0,0.28);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .folder::before{
+    content: attr(data-tab);
+    position:absolute;
+    top:-13px;
+    left: 18px;
+    font-family:'Special Elite', monospace;
+    font-size: 0.68rem;
+    color: #4A3B1C;
+    background: linear-gradient(180deg, #E4C67F, var(--kraft));
+    border: 1px solid var(--kraft-dark);
+    border-bottom: none;
+    padding: 5px 12px 4px;
+    border-radius: 5px 5px 0 0;
+    letter-spacing: 0.06em;
+  }
+  .folder.available:hover{
+    transform: translateY(-3px);
+    box-shadow: 0 18px 34px rgba(0,0,0,0.4);
+  }
+  .folder.soon{
+    opacity: 0.62;
+    cursor: default;
+  }
+  .folder-title{
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 10px 0 8px;
+  }
+  .folder-desc{
+    font-size: 0.88rem;
+    color: var(--charcoal);
+    line-height: 1.5;
+    flex:1;
+  }
+  .folder-status{
+    margin-top: 14px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  .dot{
+    width:7px; height:7px; border-radius:50%;
+    display:inline-block;
+  }
+  .folder.available .dot{ background: var(--green); }
+  .folder.soon .dot{ background: var(--muted); }
+  .folder.available .folder-status{ color: var(--green); }
+  .folder.soon .folder-status{ color: var(--muted); }
+
+  .footnote{
+    text-align:center;
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 0.7rem;
+    color: #6E86A3;
+    margin-top: 36px;
+  }
+</style>
 </head>
 <body>
-
-<header class="topbar">
-  <div class="topbar-inner">
-    <span class="brand">Wochenbuch</span>
-    <nav class="tabs" id="tabs">
-      <button class="tab active" data-view="today">Heute</button>
-      <button class="tab" data-view="week">Woche</button>
-      <button class="tab" data-view="setup">Einrichten</button>
-    </nav>
+<div class="wrap">
+  <div class="masthead">
+    <h1>Wochenbuch-Tools</h1>
+    <div class="sub">Werkzeugkasten für den Schulalltag</div>
   </div>
-</header>
 
-<main id="app"></main>
+  <div class="shelf">
 
-<div id="toast" class="toast" hidden></div>
+    <a class="folder available" data-tab="Register" href="personenverwaltung.html">
+      <div class="folder-title">Klassen</div>
+      <div class="folder-desc">Klassen und Schüler:innen verwalten – zentrale Datenquelle für alle anderen Tools.</div>
+      <div class="folder-status"><span class="dot"></span>Verfügbar</div>
+    </a>
 
-<script src="app.js"></script>
+    <a class="folder available" data-tab="Heft" href="https://rohnerpatrick-ux.github.io/Wochenbuch/">
+      <div class="folder-title">Wochenbuch</div>
+      <div class="folder-desc">Wochenplanung für den Unterricht.</div>
+      <div class="folder-status"><span class="dot"></span>Verfügbar</div>
+    </a>
+
+    <div class="folder soon" data-tab="Zensur">
+      <div class="folder-title">Noten</div>
+      <div class="folder-desc">Notenverwaltung je Klasse, greift auf die Schülerliste zu.</div>
+      <div class="folder-status"><span class="dot"></span>Bald verfügbar</div>
+    </div>
+
+    <div class="folder soon" data-tab="Plan">
+      <div class="folder-title">Stundenpläne</div>
+      <div class="folder-desc">Stundenpläne je Klasse anlegen und einsehen.</div>
+      <div class="folder-status"><span class="dot"></span>Bald verfügbar</div>
+    </div>
+
+    <div class="folder soon" data-tab="Liste">
+      <div class="folder-title">Todos</div>
+      <div class="folder-desc">Aufgaben und Erledigungen im Blick behalten.</div>
+      <div class="folder-status"><span class="dot"></span>Bald verfügbar</div>
+    </div>
+
+    <div class="folder soon" data-tab="Termine">
+      <div class="folder-title">Veranstaltungen</div>
+      <div class="folder-desc">Team-Kalender für gemeinsame Termine und Events.</div>
+      <div class="folder-status"><span class="dot"></span>Bald verfügbar</div>
+    </div>
+
+  </div>
+
+  <div class="footnote">Alle Tools teilen sich dieselbe Datenbasis · angemeldet mit deinem Firebase-Konto</div>
+</div>
 </body>
 </html>
